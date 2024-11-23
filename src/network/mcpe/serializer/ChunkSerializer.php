@@ -145,7 +145,7 @@ final class ChunkSerializer{
 				}
 			}else{
 				foreach($palette as $p){
-					$stream->put(Binary::writeUnsignedVarInt($blockTranslator->internalIdToNetworkId($p) << 1));
+					$stream->put(Binary::writeVarInt($blockTranslator->internalIdToNetworkId($p)));
 				}
 			}
 		}

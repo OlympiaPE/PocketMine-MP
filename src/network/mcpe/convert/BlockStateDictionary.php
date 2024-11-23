@@ -25,7 +25,9 @@ namespace pocketmine\network\mcpe\convert;
 
 use pocketmine\data\bedrock\block\BlockStateData;
 use pocketmine\data\bedrock\block\BlockTypeNames;
+use pocketmine\nbt\LittleEndianNbtSerializer;
 use pocketmine\nbt\NbtDataException;
+use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\TreeRoot;
 use pocketmine\network\mcpe\protocol\serializer\NetworkNbtSerializer;
 use pocketmine\utils\Utils;
@@ -165,6 +167,42 @@ final class BlockStateDictionary{
 		);
 	}
 
+	private static function fnv1a32BlockState(BlockStateData $data): int
+	{
+		$tag = CompoundTag::create()->setString(BlockStateData::TAG_NAME, $data->getName());
+		$states = CompoundTag::create();
+		$tags = $data->getStates();
+		ksort($tags);
+		foreach(Utils::stringifyKeys($tags) as $key => $property) {
+			$states->setTag($key, $property);
+		}
+		$tag->setTag(BlockStateData::TAG_STATES, $states);
+		return self::fnv1a32Nbt($tag);
+	}
+
+	private static function fnv1a32Nbt(CompoundTag $tag): int
+	{
+		if ($tag->getString("name", "") === "minecraft:unknown") {
+			return -2;
+		}
+
+		$nbtStream = new LittleEndianNbtSerializer();
+		$binaryNBT = $nbtStream->write(new TreeRoot($tag));
+
+		return self::fnv1a32($binaryNBT);
+	}
+
+	private static function fnv1a32(string $str): int
+	{
+		$hashHex = hash('fnv1a32', $str);
+		$hashInt = intval(hexdec($hashHex));
+		if ($hashInt > 0x7FFFFFFF) {
+			$hashInt -= 0x100000000;
+		}
+
+		return $hashInt;
+	}
+
 	public static function loadFromString(string $blockPaletteContents, string $metaMapContents) : self{
 		$metaMap = json_decode($metaMapContents, flags: JSON_THROW_ON_ERROR);
 		if(!is_array($metaMap)){
@@ -192,7 +230,7 @@ final class BlockStateDictionary{
 				throw new \InvalidArgumentException("Invalid metaMap offset $i, expected int, got " . get_debug_type($meta));
 			}
 			$uniqueName = $uniqueNames[$state->getName()] ??= $state->getName();
-			$entries[$i] = new BlockStateDictionaryEntry($uniqueName, $state->getStates(), $meta);
+			$entries[self::fnv1a32BlockState($state)] = new BlockStateDictionaryEntry($uniqueName, $state->getStates(), $meta);
 		}
 
 		return new self($entries);
